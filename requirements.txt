@@ -5,3 +5,4 @@ pydantic
 python-pptx
 google-generativeai
 groq
+python-dotenv
