@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +15,6 @@ from pydantic import BaseModel
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
 
-# Tambahkan path ke sys.path agar impor modul selalu berhasil dari manapun server dijalankan
 sys.path.extend([str(BASE_DIR), str(ROOT_DIR)])
 
 try:
@@ -29,46 +28,27 @@ except ImportError:
     from ai_generator import generate_ai_media
     from media_generator import generate_media
 
-# Variabel 'app' yang dipanggil oleh Uvicorn
 app = FastAPI(title="SISDIG AI")
 
 # ==========================================
-# PERBAIKAN CORS LENGKAP UNTUK CLOUDFLARE & NETLIFY HP
+# PERBAIKAN CORS LENGKAP & AMAN UNTUK BROWSER
 # ==========================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Mengizinkan semua origin termasuk Netlify
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
-# Interceptor Middleware untuk memastikan semua request OPTIONS (Preflight) dari HP tidak diblokir Cloudflare
-@app.middleware("http")
-async def add_cors_header(request: Request, call_next):
-    if request.method == "OPTIONS":
-        response = JSONResponse(content={"status": "ok"})
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
-    
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
-
-# Folder penyimpanan terpusat di root project
-UPLOAD_DIR = ROOT_DIR / "uploads"
-GENERATED_DIR = ROOT_DIR / "generated"
-
+# ==========================================
+# FOLDER PENYIMPANAN WAJIB DI /tmp/ (VERCEL READ-ONLY)
+# ==========================================
 UPLOAD_DIR = Path("/tmp/uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+GENERATED_DIR = Path("/tmp/generated")
 
-FRONTEND_DIR = ROOT_DIR / "frontend"
-if FRONTEND_DIR.exists():
-    app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
 class RenameRequest(BaseModel):
     title: str
@@ -76,7 +56,7 @@ class RenameRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"message": "SISDIG AI Backend berhasil berjalan!"}
+    return {"status": "online", "message": "SISDIG AI Backend berhasil berjalan!"}
 
 
 @app.post("/upload")
@@ -152,23 +132,18 @@ async def process_ppt(
         slides_data = read_ppt(file_path)
         ai_media = generate_ai_media(slides_data)
         
-        # Konversi ke dictionary jika berbentuk string
         if isinstance(ai_media, str):
             ai_media = json.loads(ai_media)
         elif hasattr(ai_media, "dict"):
             ai_media = ai_media.dict()
 
-        # Masukkan nilai minggu
         ai_media["week"] = week
         
-        # SIMPAN Wajib ke folder GENERATED_DIR agar History membaca file ini
         json_filename = f"{Path(safe_filename).stem}.json"
         json_path = GENERATED_DIR / json_filename
         
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(ai_media, f, ensure_ascii=False, indent=2)
-
-        print(f"\n[SUCCESS] File tersimpan di: {json_path} | Minggu: {week}")
 
         return {
             "message": "PPT berhasil diproses",
@@ -178,7 +153,6 @@ async def process_ppt(
             "media": ai_media
         }
     except Exception as error:
-        print(f"\n[ERROR] Gagal proses: {error}")
         return {"error": "Gagal memproses PPT", "detail": str(error)}
 
 
@@ -194,31 +168,30 @@ def get_media(filename: str):
 
 
 # ==========================================
-# FITUR MANAJEMEN MATERI (DRAFT & MINGGUAN)
+# FITUR MANAJEMEN MATERI
 # ==========================================
 
 @app.get("/materials")
 def list_materials():
-    """Mengambil semua daftar media JSON yang ada di folder generated"""
     materials = []
-    for file_path in GENERATED_DIR.glob("*.json"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = json.load(f)
-                materials.append({
-                    "filename": file_path.name,
-                    "title": content.get("title", file_path.stem),
-                    "course": content.get("course", "Sistem Digital"),
-                    "week": content.get("week", 0)
-                })
-        except Exception:
-            continue
+    if GENERATED_DIR.exists():
+        for file_path in GENERATED_DIR.glob("*.json"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = json.load(f)
+                    materials.append({
+                        "filename": file_path.name,
+                        "title": content.get("title", file_path.stem),
+                        "course": content.get("course", "Sistem Digital"),
+                        "week": content.get("week", 0)
+                    })
+            except Exception:
+                continue
     return materials
 
 
 @app.put("/materials/{filename}/rename")
 def rename_material(filename: str, req: RenameRequest):
-    """Mengubah judul materi di dalam file JSON"""
     safe_filename = Path(filename).name
     file_path = GENERATED_DIR / safe_filename
 
@@ -241,7 +214,6 @@ def rename_material(filename: str, req: RenameRequest):
 
 @app.delete("/materials/{filename}")
 def delete_material(filename: str):
-    """Menghapus file media JSON"""
     safe_filename = Path(filename).name
     file_path = GENERATED_DIR / safe_filename
 
