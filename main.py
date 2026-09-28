@@ -24,7 +24,7 @@ try:
     from ai_generator import generate_ai_media
     from media_generator import generate_media
 except ImportError:
-    from backend.ppt_reader import read_ppt
+    from ppt_reader import read_ppt
     from backend.content_analyzer import analyze_content
     from backend.ai_generator import generate_ai_media
     from backend.media_generator import generate_media
