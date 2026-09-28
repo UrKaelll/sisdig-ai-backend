@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 
 
-GENERATED_DIR = Path("generated")
+
+GENERATED_DIR = Path("/tmp/generated")
 GENERATED_DIR.mkdir(exist_ok=True)
 
 
