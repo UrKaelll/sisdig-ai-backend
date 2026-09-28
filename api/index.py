@@ -1,7 +1,9 @@
 import os
 import sys
 
-# Memastikan Vercel bisa membaca file main.py dari folder utama
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Tambahkan root folder ke jalur import Python
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 
 from main import app
