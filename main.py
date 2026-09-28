@@ -62,8 +62,8 @@ async def add_cors_header(request: Request, call_next):
 UPLOAD_DIR = ROOT_DIR / "uploads"
 GENERATED_DIR = ROOT_DIR / "generated"
 
+UPLOAD_DIR = Path("/tmp/uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
-GENERATED_DIR.mkdir(exist_ok=True)
 
 FRONTEND_DIR = ROOT_DIR / "frontend"
 if FRONTEND_DIR.exists():
