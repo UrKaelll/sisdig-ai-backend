@@ -62,6 +62,32 @@ Struktur JSON Wajib:
 }
 """
 
+def get_available_gemini_models():
+    """Mendapatkan daftar model Gemini aktif yang mendukung generateContent secara otomatis"""
+    try:
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # Urutkan berdasarkan prioritas versi Flash & Pro
+        preferred_keywords = ['flash', 'pro', 'gemini']
+        sorted_models = []
+        
+        for kw in preferred_keywords:
+            for m_name in available_models:
+                if kw in m_name and m_name not in sorted_models:
+                    sorted_models.append(m_name)
+                    
+        for m_name in available_models:
+            if m_name not in sorted_models:
+                sorted_models.append(m_name)
+                
+        return sorted_models if sorted_models else ["models/gemini-1.5-flash"]
+    except Exception as e:
+        print(f"[WARN] Gagal mengambil daftar model Gemini: {e}")
+        return ["models/gemini-1.5-flash", "models/gemini-1.5-pro"]
+
 def generate_ai_media(slides_data):
     api_key = os.getenv("GEMINI_API_KEY")
 
@@ -82,15 +108,7 @@ def generate_ai_media(slides_data):
     {compact_material_json}
     """
 
-    # Daftar nama model Gemini yang akan dicoba satu per satu
-    candidate_models = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro"
-    ]
-
+    candidate_models = get_available_gemini_models()
     last_error = None
 
     for model_name in candidate_models:
@@ -102,13 +120,10 @@ def generate_ai_media(slides_data):
             )
             
             response = model.generate_content(full_prompt)
-            
-            # Jika berhasil mendapat respon JSON
             return json.loads(response.text)
 
         except Exception as e:
             last_error = e
             continue
 
-    # Jika semua model gagal
     raise last_error
