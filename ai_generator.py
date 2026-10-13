@@ -1,15 +1,12 @@
 import json
 import os
 from pathlib import Path
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
 
-# 1. Muat file .env dari root project
+# 1. Muat file .env dari root project (untuk lokal)
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
-
-# 2. Tempelkan API Key Groq kamu di sini (diawali gsk_...)
-HARDCODED_API_KEY = "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"
 
 SYSTEM_PROMPT = """
 Anda adalah AI Dosen Pengampu mata kuliah Sistem Digital & Arsitektur Komputer.
@@ -65,45 +62,25 @@ Struktur JSON Wajib:
 }
 """
 
-def get_available_groq_models(client):
-    """Mendapatkan daftar model aktif langsung dari server Groq tanpa hardcode"""
-    try:
-        models_data = client.models.list()
-        available_ids = [m.id for m in models_data.data]
-        print(f"---> [DEBUG] Model yang tersedia di akun Groq kamu: {available_ids} <---")
-        
-        # Prioritaskan model Llama / Qwen yang berkapasitas besar jika tersedia
-        preferred_keywords = ['llama-3.3', 'llama-3.2', 'llama-3.1', 'llama', 'qwen']
-        
-        sorted_models = []
-        for kw in preferred_keywords:
-            for m_id in available_ids:
-                if kw in m_id and m_id not in sorted_models:
-                    sorted_models.append(m_id)
-                    
-        # Tambahkan sisa model aktif lainnya
-        for m_id in available_ids:
-            if m_id not in sorted_models:
-                sorted_models.append(m_id)
-                
-        return sorted_models
-    except Exception as e:
-        print(f"[WARN] Gagal mengambil daftar model dinamis dari Groq: {e}")
-        return ["llama-3.3-70b-versatile", "llama-3.2-11b-vision-preview", "llama-3.1-8b-instant"]
-
 def generate_ai_media(slides_data):
-    api_key = os.getenv("GROQ_API_KEY") or HARDCODED_API_KEY
+    api_key = os.getenv("GEMINI_API_KEY")
 
-    if not api_key or "PASTE_GROQ" in api_key:
-        raise ValueError("GROQ_API_KEY belum terpasang dengan benar.")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY belum terpasang di Environment Variables Vercel.")
 
-    client = Groq(api_key=api_key)
+    genai.configure(api_key=api_key)
+
+    # Menggunakan Gemini 1.5 Flash yang cepat, gratis, dan mendukung output JSON murni
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        generation_config={"response_mime_type": "application/json"},
+        system_instruction="Anda adalah AI pembuat JSON terstruktur untuk media pembelajaran. Kembalikan HANYA format JSON murni."
+    )
 
     material = {
         "slides": slides_data
     }
 
-    # Kompres JSON untuk menghemat ruang token
     compact_material_json = json.dumps(material, ensure_ascii=False, separators=(',', ':'))
 
     full_prompt = f"""
@@ -113,37 +90,5 @@ def generate_ai_media(slides_data):
     {compact_material_json}
     """
 
-    models_to_try = get_available_groq_models(client)
-
-    last_error = None
-
-    for model_name in models_to_try:
-        try:
-            print(f"\n---> [DEBUG] Mengirim request ke model: {model_name} <---")
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Anda adalah AI pembuat JSON terstruktur untuk media pembelajaran. Kembalikan HANYA format JSON murni."
-                    },
-                    {
-                        "role": "user",
-                        "content": full_prompt
-                    }
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.2,
-                max_tokens=4096
-            )
-
-            result_text = response.choices[0].message.content
-            print(f"---> [DEBUG] Sukses diproses oleh model: {model_name} <---")
-            return json.loads(result_text)
-
-        except Exception as e:
-            last_error = e
-            print(f"[WARN] Model {model_name} gagal: {e}")
-            continue
-
-    raise last_error
+    response = model.generate_content(full_prompt)
+    return json.loads(response.text)
