@@ -70,17 +70,9 @@ def generate_ai_media(slides_data):
 
     genai.configure(api_key=api_key)
 
-    # Menggunakan Gemini 1.5 Flash yang cepat, gratis, dan mendukung output JSON murni
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        generation_config={"response_mime_type": "application/json"},
-        system_instruction="Anda adalah AI pembuat JSON terstruktur untuk media pembelajaran. Kembalikan HANYA format JSON murni."
-    )
-
     material = {
         "slides": slides_data
     }
-
     compact_material_json = json.dumps(material, ensure_ascii=False, separators=(',', ':'))
 
     full_prompt = f"""
@@ -90,5 +82,33 @@ def generate_ai_media(slides_data):
     {compact_material_json}
     """
 
-    response = model.generate_content(full_prompt)
-    return json.loads(response.text)
+    # Daftar nama model Gemini yang akan dicoba satu per satu
+    candidate_models = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+
+    last_error = None
+
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config={"response_mime_type": "application/json"},
+                system_instruction="Anda adalah AI pembuat JSON terstruktur untuk media pembelajaran. Kembalikan HANYA format JSON murni."
+            )
+            
+            response = model.generate_content(full_prompt)
+            
+            # Jika berhasil mendapat respon JSON
+            return json.loads(response.text)
+
+        except Exception as e:
+            last_error = e
+            continue
+
+    # Jika semua model gagal
+    raise last_error
